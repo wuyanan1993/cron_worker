@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+var TaskChannel = make(chan Task, 10000)
+var concurrencyChannel = make(chan struct{}, 2)
+
 type Task interface {
 	Run(chan struct{})
 	GetTimeoutSecond() int
@@ -86,4 +89,46 @@ func GetAllCronTaskList() []Task {
 	}
 	// TODO: 写入到 remote database 中
 	return taskList
+}
+
+func CurrentTaskChannelCount() {
+
+}
+
+// StartTaskConsumer 启动任务消费
+func StartTaskConsumer() {
+	// 初始化任务 channel
+	// 初始化任务生成器
+	taskProducerTicker := time.NewTicker(3 * time.Second)
+	go func() {
+		for range taskProducerTicker.C {
+			fmt.Println("模拟巡检任务生成中。。。")
+			//根据taskList循环写入到task channel里边
+			// 控制task channel 的写入上限 为总大小的80%，超过的话就不往里边添加任务了
+			if len(TaskChannel) > 8000 {
+				continue
+			}
+			taskList := GetAllCronTaskList()
+			for _, v := range taskList {
+				TaskChannel <- v
+			}
+		}
+	}()
+}
+
+func StartConcurrencyControl() {
+	// 初始化并发控制channel，从这个channel 中拿到消息才能进行任务执行
+	for i := 0; i < cap(concurrencyChannel); i++ {
+		concurrencyChannel <- struct{}{}
+	}
+}
+
+func StartTaskProducer() {
+	// 初始化任务执行器
+	for {
+		_ = <-concurrencyChannel
+		t := <-TaskChannel
+		// 此处拿到票据才能执行，需要控制并发度
+		go t.Run(concurrencyChannel)
+	}
 }
