@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"cron_worker/store"
 	"fmt"
 	"time"
 )
@@ -99,6 +100,13 @@ func GetAllCronTaskList() []Task {
 		//&BinVersionChecker{TaskName: "binVersion", TimeoutSecond: 5},
 	}
 	// TODO: 写入到 remote database 中
+	var backend store.RemoteStore
+	backend = &store.MongodbStore{ConnectionString: "localhost:8080"}
+	err := backend.AddTask(taskList)
+	if err != nil {
+		fmt.Println("写入到远程database中失败: ", err)
+	}
+
 	return taskList
 }
 
