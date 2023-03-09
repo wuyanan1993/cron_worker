@@ -13,10 +13,14 @@ type Task interface {
 	GetTimeoutSecond() time.Duration
 }
 
+type Checker struct {
+	TaskName      string        `json:"task_name"`
+	TaskType      string        `json:"task_type"`
+	TimeoutSecond time.Duration `json:"timeout_second"`
+}
+
 type ReplicationLagChecker struct {
-	TaskName      string
-	TaskType      string
-	TimeoutSecond time.Duration
+	Checker
 }
 
 func (r *ReplicationLagChecker) Run(conC chan struct{}) {
@@ -36,9 +40,7 @@ func (r *ReplicationLagChecker) GetTimeoutSecond() time.Duration {
 }
 
 type BinVersionChecker struct {
-	TaskName      string        `json:"task_name"`
-	TaskType      string        `json:"task_type"`
-	TimeoutSecond time.Duration `json:"timeout_second"`
+	Checker
 }
 
 func (b *BinVersionChecker) Run(conC chan struct{}) {
@@ -49,8 +51,8 @@ func (b *BinVersionChecker) Run(conC chan struct{}) {
 	timeoutT := time.NewTicker(b.GetTimeoutSecond() * time.Second)
 	finishedFlag := make(chan struct{})
 	go func() {
-		time.Sleep(11 * time.Second)
 		fmt.Println("正在执行BinVersionChecker!")
+		time.Sleep(11 * time.Second)
 	}()
 	select {
 	case <-timeoutT.C:
@@ -70,9 +72,7 @@ func (b *BinVersionChecker) GetTimeoutSecond() time.Duration {
 }
 
 type ShardTopologyChecker struct {
-	TaskName      string
-	TaskType      string
-	TimeoutSecond time.Duration
+	Checker
 }
 
 func (t *ShardTopologyChecker) Run(conC chan struct{}) {
@@ -94,16 +94,12 @@ func (t *ShardTopologyChecker) GetTimeoutSecond() time.Duration {
 func GetAllCronTaskList() []Task {
 	// 初始化任务列表, 并写入到local channel 和 remote database
 	taskList := []Task{
-		&ShardTopologyChecker{TaskName: "shardTopology", TimeoutSecond: 5},
+		&ShardTopologyChecker{Checker: Checker{TaskName: "shardTopology", TimeoutSecond: 5}},
 		//&ReplicationLagChecker{TaskName: "replicationLag", TimeoutSecond: 5},
 		//&BinVersionChecker{TaskName: "binVersion", TimeoutSecond: 5},
 	}
 	// TODO: 写入到 remote database 中
 	return taskList
-}
-
-func CurrentTaskChannelCount() {
-
 }
 
 // StartTaskProducer 启动定时巡检任务生成
@@ -141,4 +137,22 @@ func StartTaskConsumer() {
 		// 此处拿到票据才能执行，需要控制并发度
 		go t.Run(concurrencyChannel)
 	}
+}
+
+func CreateChecker(c *Checker) Task {
+	//&ShardTopologyChecker{Checker: Checker{TaskName: "shardTopology"}, TimeoutSecond: 5},
+	//&ReplicationLagChecker{TaskName: "replicationLag", TimeoutSecond: 5},
+	//&BinVersionChecker{TaskName: "binVersion", TimeoutSecond: 5},
+	fmt.Println("add task, task_name: ", c.TaskName)
+	switch c.TaskName {
+	case "binVersion":
+		return &BinVersionChecker{Checker: *c}
+	case "replicationLag":
+		return &ReplicationLagChecker{Checker: *c}
+	case "shardTopology":
+		return &ShardTopologyChecker{Checker: *c}
+	default:
+		return nil
+	}
+
 }
