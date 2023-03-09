@@ -15,9 +15,9 @@ func InitTask() {
 	//for range ticker.C {
 	//	fmt.Println("重复任务执行中")
 	//}
-	http_server.InitHttpServer()
-	tasks.StartTaskConsumer()
+	go http_server.InitHttpServer()
 	tasks.StartConcurrencyControl()
 	tasks.StartTaskProducer()
+	tasks.StartTaskConsumer()
 
 }

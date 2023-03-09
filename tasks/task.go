@@ -6,30 +6,29 @@ import (
 )
 
 var TaskChannel = make(chan Task, 10000)
-var concurrencyChannel = make(chan struct{}, 2)
+var concurrencyChannel = make(chan struct{}, 1)
 
 type Task interface {
 	Run(chan struct{})
-	GetTimeoutSecond() int
+	GetTimeoutSecond() time.Duration
 }
 
 type ReplicationLagChecker struct {
 	TaskName      string
 	TaskType      string
-	TimeoutSecond int
+	TimeoutSecond time.Duration
 }
 
-// Run TODO: 需要加上超时控制，最大执行时间可以从 checker 属性TimeoutSecond获取
 func (r *ReplicationLagChecker) Run(conC chan struct{}) {
 	defer func() {
 		// 运行结束之后给并发的channel里写入一个struct，相当于释放ticket，以供其他任务使用
 		conC <- struct{}{}
 	}()
-	time.Sleep(time.Second)
+	time.Sleep(4 * time.Second)
 	fmt.Println("正在执行ReplicationLagChecker!")
 }
 
-func (r *ReplicationLagChecker) GetTimeoutSecond() int {
+func (r *ReplicationLagChecker) GetTimeoutSecond() time.Duration {
 	if r.TimeoutSecond != 0 {
 		return r.TimeoutSecond
 	}
@@ -37,9 +36,9 @@ func (r *ReplicationLagChecker) GetTimeoutSecond() int {
 }
 
 type BinVersionChecker struct {
-	TaskName      string
-	TaskType      string
-	TimeoutSecond int
+	TaskName      string        `json:"task_name"`
+	TaskType      string        `json:"task_type"`
+	TimeoutSecond time.Duration `json:"timeout_second"`
 }
 
 func (b *BinVersionChecker) Run(conC chan struct{}) {
@@ -47,11 +46,23 @@ func (b *BinVersionChecker) Run(conC chan struct{}) {
 		// 运行结束之后给并发的channel里写入一个struct，相当于释放ticket，以供其他任务使用
 		conC <- struct{}{}
 	}()
-	time.Sleep(time.Second)
-	fmt.Println("正在执行BinVersionChecker!")
+	timeoutT := time.NewTicker(b.GetTimeoutSecond() * time.Second)
+	finishedFlag := make(chan struct{})
+	go func() {
+		time.Sleep(11 * time.Second)
+		fmt.Println("正在执行BinVersionChecker!")
+	}()
+	select {
+	case <-timeoutT.C:
+		fmt.Println("执行任务超时")
+		return
+	case <-finishedFlag:
+		return
+	}
+
 }
 
-func (b *BinVersionChecker) GetTimeoutSecond() int {
+func (b *BinVersionChecker) GetTimeoutSecond() time.Duration {
 	if b.TimeoutSecond != 0 {
 		return b.TimeoutSecond
 	}
@@ -61,7 +72,7 @@ func (b *BinVersionChecker) GetTimeoutSecond() int {
 type ShardTopologyChecker struct {
 	TaskName      string
 	TaskType      string
-	TimeoutSecond int
+	TimeoutSecond time.Duration
 }
 
 func (t *ShardTopologyChecker) Run(conC chan struct{}) {
@@ -69,11 +80,11 @@ func (t *ShardTopologyChecker) Run(conC chan struct{}) {
 		// 运行结束之后给并发的channel里写入一个struct，相当于释放ticket，以供其他任务使用
 		conC <- struct{}{}
 	}()
-	time.Sleep(time.Second)
-	fmt.Println("正在执行ShardTopologyChecker!")
+	time.Sleep(2 * time.Second)
+	fmt.Println("正在执行 ShardTopologyChecker!")
 }
 
-func (t *ShardTopologyChecker) GetTimeoutSecond() int {
+func (t *ShardTopologyChecker) GetTimeoutSecond() time.Duration {
 	if t.TimeoutSecond != 0 {
 		return t.TimeoutSecond
 	}
@@ -84,8 +95,8 @@ func GetAllCronTaskList() []Task {
 	// 初始化任务列表, 并写入到local channel 和 remote database
 	taskList := []Task{
 		&ShardTopologyChecker{TaskName: "shardTopology", TimeoutSecond: 5},
-		&ReplicationLagChecker{TaskName: "replicationLag", TimeoutSecond: 5},
-		&BinVersionChecker{TaskName: "binVersion", TimeoutSecond: 5},
+		//&ReplicationLagChecker{TaskName: "replicationLag", TimeoutSecond: 5},
+		//&BinVersionChecker{TaskName: "binVersion", TimeoutSecond: 5},
 	}
 	// TODO: 写入到 remote database 中
 	return taskList
@@ -95,9 +106,8 @@ func CurrentTaskChannelCount() {
 
 }
 
-// StartTaskConsumer 启动任务消费
-func StartTaskConsumer() {
-	// 初始化任务 channel
+// StartTaskProducer 启动定时巡检任务生成
+func StartTaskProducer() {
 	// 初始化任务生成器
 	taskProducerTicker := time.NewTicker(3 * time.Second)
 	go func() {
@@ -123,7 +133,7 @@ func StartConcurrencyControl() {
 	}
 }
 
-func StartTaskProducer() {
+func StartTaskConsumer() {
 	// 初始化任务执行器
 	for {
 		_ = <-concurrencyChannel

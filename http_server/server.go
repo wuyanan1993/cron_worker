@@ -1,6 +1,7 @@
 package http_server
 
 import (
+	"cron_worker/tasks"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -21,9 +22,19 @@ func InitHttpServer() {
 }
 
 func TaskCurrentCount(c *gin.Context) {
-	c.JSON(200, map[string]int{"count": 100})
+	// 获取当前待执行队列中的任务数量
+	count := len(tasks.TaskChannel)
+	c.JSON(200, map[string]int{"count": count})
 }
 
 func NewTask(c *gin.Context) {
-	c.JSON(200, map[string]string{"msg": "done"})
+	// 根据参数创建新的任务
+	var task tasks.BinVersionChecker
+	err := c.ShouldBindJSON(&task)
+	if err != nil {
+		fmt.Println("get info from http err: ", err)
+		c.JSON(400, map[string]interface{}{"msg": "err"})
+	}
+	tasks.TaskChannel <- &task
+	c.JSON(200, map[string]interface{}{"msg": "done", "info": map[string]interface{}{"task_name": task.TaskName, "task_type": task.TaskType, "timeout_second": task.TimeoutSecond}})
 }
